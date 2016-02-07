@@ -33,6 +33,7 @@ import scala.collection.concurrent.TrieMap
 
 /**
   * {{{
+  *   import org.mentha.spark.mapreduce.KeyBasedCollectionRDD._
   *   objectStream
   *      .map { obj => (getKey(obj), toJson(obj)) }
   *      .groupByKey()
@@ -41,7 +42,7 @@ import scala.collection.concurrent.TrieMap
   *          if (rdd.count() > 0) {
   *            rdd
   *              .map { case (key, iter) => ((time.milliseconds, Seq(key)), iter) }
-  *              .saveAsKeyBasedCollection(path = "s3a://...")
+  *              .saveAsTextFiles(path = "s3a://...")
   *          }
   *        }
   *      }
@@ -51,7 +52,7 @@ object KeyBasedCollectionRDD {
 
   implicit class KeyBasedCollectionRDD[V <: AnyRef](self: RDD[(KeyBasedCollectionOutputFormat.TSKeyPath, Iterable[V])]) extends Logging {
 
-    def saveAsTextFile(path: String): Unit = {
+    def saveAsTextFiles(path: String): Unit = {
       self
         .saveAsNewAPIHadoopFile(
           path = path,
@@ -60,7 +61,6 @@ object KeyBasedCollectionRDD {
           outputFormatClass = classOf[KeyBasedCollectionOutputFormat.OutputFormat[V]]
         )
     }
-
   }
 
 }
