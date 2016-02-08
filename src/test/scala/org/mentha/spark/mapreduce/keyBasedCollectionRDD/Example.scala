@@ -50,15 +50,9 @@ object Example {
     stream
       .map { case (ts, t) => (ts.get, t.toString) }
       .map { case (ts, s) => (ts, s.split(' ').toSeq) }
-      .map { case (ts, s1 :: s2) => (s1, toRecord(ts, s2.mkString(" "))) }
+      .map { case (ts, s1 :: s2) => (Seq(s1), toRecord(ts, s2.mkString(" "))) }
       .groupByKey()
-      .foreachRDD {
-        (rdd, time) => {
-          rdd
-            .map { case (key, iter) => ((time.milliseconds, Seq(key)), iter) }
-            .saveAsTextFiles("/tmp/output-folder")
-        }
-      }
+      .saveAsKeyBasedTextFiles(basePath = "/tmp/output-folder")
 
     ssc.start()
 

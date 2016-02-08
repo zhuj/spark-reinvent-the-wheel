@@ -27,6 +27,7 @@ import org.apache.hadoop.mapreduce._
 import org.apache.hadoop.mapreduce.lib.output._
 import org.apache.spark.Logging
 import org.apache.spark.rdd.RDD
+import org.apache.spark.streaming.dstream.DStream
 import org.mentha.spark.utils.Base32
 
 import scala.collection.concurrent.TrieMap
@@ -35,45 +36,59 @@ import scala.collection.concurrent.TrieMap
   * {{{
   *   import org.mentha.spark.mapreduce.KeyBasedCollectionRDD._
   *   objectStream
-  *      .map { obj => (getKey(obj), toJson(obj)) }
+  *      .map { obj => (getKeyChain(obj), toJson(obj)) }
   *      .groupByKey()
-  *      .foreachRDD {
-  *        (rdd, time) => {
-  *          if (rdd.count() > 0) {
-  *            rdd
-  *              .map { case (key, iter) => ((time.milliseconds, Seq(key)), iter) }
-  *              .saveAsTextFiles(path = "s3a://...")
-  *          }
-  *        }
-  *      }
+  *      .saveAsKeyBasedTextFiles("s3a://...")
   * }}}
   */
 object KeyBasedCollectionRDD {
 
   implicit class KeyBasedCollectionRDD[V <: AnyRef](self: RDD[(KeyBasedCollectionOutputFormat.TSKeyPath, Iterable[V])]) extends Logging {
 
-    def saveAsTextFiles(path: String): Unit = {
+    @inline
+    def saveAsKeyBasedTextFiles(basePath: String): Unit = /*self.withScope*/ {
       self
         .saveAsNewAPIHadoopFile(
-          path = path,
+          path = basePath,
           keyClass = classOf[KeyBasedCollectionOutputFormat.TSKeyPath],
           valueClass = classOf[Iterable[V]],
           outputFormatClass = classOf[KeyBasedCollectionOutputFormat.OutputFormat[V]]
         )
     }
+
   }
+
+  implicit class KeyBasedCollectionDStream[V <: AnyRef](self: DStream[(Seq[String], Iterable[V])]) extends Logging {
+
+    @inline
+    def saveAsKeyBasedTextFiles(basePath: String): Unit = /* self.ssc.withScope */ {
+      self
+        .foreachRDD {
+          (rdd, time) => {
+            if (!rdd.isEmpty()) {
+              rdd
+                .map { case (keys, iter) => ((time.milliseconds, keys), iter) }
+                .saveAsKeyBasedTextFiles(basePath)
+            }
+          }
+        }
+    }
+
+  }
+
 
 }
 
-/** */
+/** An [[org.apache.hadoop.mapreduce.OutputFormat]] that writes text files in the paths based on rdd timestamp and key sequence. */
 object KeyBasedCollectionOutputFormat {
 
   /** KeyChain with TimeStamp */
   type TSKeyPath = (Long, Seq[String])
 
-  /** */
+  /** Output format class */
   class OutputFormat[V <: AnyRef] extends TextOutputFormat[TSKeyPath, Iterable[V]] {
 
+    /** override me */
     protected def constructKeyBasedPath(job: TaskAttemptContext, fullKey: TSKeyPath): Path = {
       val (rddTs, keys) = fullKey
 
@@ -105,6 +120,7 @@ object KeyBasedCollectionOutputFormat {
       new Path(outputPath, childPath)
     }
 
+    /** override me */
     protected def constructRecordWriter(job: TaskAttemptContext, outputPath: Path): RecordWriter[String, V] = {
       val conf: Configuration = job.getConfiguration
       val fs: FileSystem = outputPath.getFileSystem(conf)
@@ -113,8 +129,9 @@ object KeyBasedCollectionOutputFormat {
       new TextOutputFormat.LineRecordWriter[String, V](fileOut, keyValueSeparator)
     }
 
-    protected def getRowKeyPrefix(fullKey: TSKeyPath, value: V): String = {
-      null
+    /** override me */
+    protected def getRowKeyPrefix(fullKey: TSKeyPath, value: V): Option[String] = {
+      None
     }
 
     override def getRecordWriter(job: TaskAttemptContext): RecordWriter[TSKeyPath, Iterable[V]] = {
@@ -126,7 +143,7 @@ object KeyBasedCollectionOutputFormat {
           val keyBasedPath: Path = constructKeyBasedPath(job, fullKey)
           val writer: RecordWriter[String, V] = writers.getOrElseUpdate(keyBasedPath, constructRecordWriter(job, keyBasedPath))
           for (v <- values) {
-            val key: String = getRowKeyPrefix(fullKey, v)
+            val key: String = getRowKeyPrefix(fullKey, v).orNull
             writer.write(key, v)
           }
         }
