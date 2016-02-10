@@ -40,7 +40,7 @@ object Base32 {
   @inline
   def packTimestampMs(timestampMs: Long): String = StringUtils.leftPad(
     java.lang.Long.toUnsignedString(timestampMs & 0x7ffffffffL, 32),
-    7 /* ~6.98 = math.log(2999-01-01 00:00:00.000 = 32472144000, 32) */ ,
+    9 /* ~8.98 = math.log(2999-01-01 00:00:00.000 = 32472144000(000), 32) */ ,
     '0'
   )
 
