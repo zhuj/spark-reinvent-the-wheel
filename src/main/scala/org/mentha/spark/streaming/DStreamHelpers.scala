@@ -18,24 +18,56 @@
 
 package org.mentha.spark.streaming
 
+import java.text.SimpleDateFormat
 import java.util.Date
 
 import org.apache.spark.Logging
 import org.apache.spark.rdd.RDD
+import org.apache.spark.streaming.Time
 import org.apache.spark.streaming.dstream.DStream
 
+import scala.collection.mutable
 import scala.reflect.ClassTag
 
 /** */
 object DStreamHelpers {
 
+  @transient
+  private val stackedStreams: mutable.WeakHashMap[DStream[_], String] = mutable.WeakHashMap.empty
+
   implicit class DStreamHelper[T: ClassTag](self: DStream[T]) extends Logging {
+
+    @inline
+    def stack(size: Int): DStream[T] = /*self.ssc.withScope*/ {
+
+      if (size <= 0) {
+        throw new Exception("Size must be positive")
+      }
+
+      // register previous stream with original slideDuration (with no action)
+      // it preserves original batch/slide processing
+      stackedStreams.synchronized {
+        stackedStreams.getOrElseUpdate(self, {
+          self.foreachRDD {
+            (rdd, timestamp) => {
+              // just show debug info, if it's enabled
+              logDebug(s"stack: postfix = ${toPostfix(timestamp)}, partitions = ${rdd.getNumPartitions}, count = ${rdd.count()}")
+            }
+          }
+          Thread.currentThread().getStackTrace.mkString("\n")
+        })
+      }
+
+      // increase slideDuration (for next streams)
+      val duration = self.slideDuration * size
+      self.window(windowDuration = duration, slideDuration = duration)
+    }
 
     @inline
     def toSinglePartition(): DStream[T] = /* self.ssc.withScope */ {
       self.transform(
         rdd => {
-          rdd.partitions.length match {
+          rdd.getNumPartitions match {
             case 1 => rdd
             case _ => rdd.coalesce(numPartitions = 1, shuffle = false)
           }
@@ -51,16 +83,31 @@ object DStreamHelpers {
       }
       stream
         .foreachRDD {
-          (rdd, time) => {
+          (rdd, timestamp) => {
             if (!rdd.isEmpty()) {
-              val postfix: String = new java.text.SimpleDateFormat("yyyy-MM-dd/HH-mm-ss.S").format(new Date(time.milliseconds))
-              logInfo(s"postfix = ${postfix}")
+              val postfix = toPostfix(timestamp)
+              logRDD("storeRDD", rdd, postfix)
               foreachFunc(rdd, postfix)
             }
           }
         }
     }
 
+    @inline
+    private def logRDD(prefix: String, rdd: RDD[T], postfix: String): Unit = {
+      if (log.isDebugEnabled) {
+        // use long output, if debug is enabled
+        logDebug(s"${prefix}: postfix = ${postfix}, partitions = ${rdd.getNumPartitions}, count = ${rdd.count()}")
+      } else {
+        logInfo(s"${prefix}: postfix = ${postfix}")
+      }
+    }
+
+    @inline
+    private def toPostfix(timestamp: Time): String = {
+      val postfix: String = new SimpleDateFormat("yyyy-MM-dd/HH-mm-ss.S").format(new Date(timestamp.milliseconds))
+      postfix
+    }
   }
 
 }
