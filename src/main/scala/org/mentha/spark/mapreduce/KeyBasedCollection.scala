@@ -89,7 +89,7 @@ object KeyBasedCollectionOutputFormat {
   class OutputFormat[V <: AnyRef] extends TextOutputFormat[TSKeyPath, Iterable[V]] {
 
     /** override me */
-    protected def constructKeyBasedPath(job: TaskAttemptContext, fullKey: TSKeyPath): Path = {
+    protected def constructChildPath(job: TaskAttemptContext, fullKey: TSKeyPath): String = {
       val (rddTs, keys) = fullKey
 
       val encodedKey: String = keys
@@ -116,7 +116,13 @@ object KeyBasedCollectionOutputFormat {
         .append(Base32.pack2(taskId.getId))
         .result()
 
+      childPath
+    }
+
+    /** override me */
+    protected def constructFullPath(job: TaskAttemptContext, fullKey: TSKeyPath): Path = {
       val outputPath = FileOutputFormat.getOutputPath(job)
+      val childPath = constructChildPath(job, fullKey)
       new Path(outputPath, childPath)
     }
 
@@ -140,7 +146,7 @@ object KeyBasedCollectionOutputFormat {
         val writers = TrieMap.empty[Path, RecordWriter[String, V]]
 
         override def write(fullKey: TSKeyPath, values: Iterable[V]): Unit = {
-          val keyBasedPath: Path = constructKeyBasedPath(job, fullKey)
+          val keyBasedPath: Path = constructFullPath(job, fullKey)
           val writer: RecordWriter[String, V] = writers.getOrElseUpdate(keyBasedPath, constructRecordWriter(job, keyBasedPath))
           for (v <- values) {
             val key: String = getRowKeyPrefix(fullKey, v).orNull
