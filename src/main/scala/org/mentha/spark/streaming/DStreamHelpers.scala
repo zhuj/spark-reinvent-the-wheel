@@ -53,7 +53,7 @@ object DStreamHelpers {
               logDebug(s"stack: postfix = ${toPostfix(timestamp)}, partitions = ${rdd.getNumPartitions}, count = ${rdd.count()}")
             }
           }
-          Thread.currentThread().getStackTrace.mkString("\n")
+          String.valueOf(Thread.currentThread().getId) // TODO: Thread.currentThread().getStackTrace.mkString("\n")
         })
       }
 
