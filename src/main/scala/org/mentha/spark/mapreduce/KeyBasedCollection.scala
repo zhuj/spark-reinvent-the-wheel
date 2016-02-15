@@ -43,7 +43,7 @@ import scala.collection.concurrent.TrieMap
   */
 object KeyBasedCollectionRDD {
 
-  implicit class KeyBasedCollectionRDD[V <: AnyRef](self: RDD[(KeyBasedCollectionOutputFormat.TSKeyPath, Iterable[V])]) extends Logging {
+  implicit class KeyBasedCollectionRDD[V <: AnyRef](self: RDD[(KeyBasedCollectionOutputFormat.TSKeyPath, Iterable[V])]) extends Logging with Serializable {
 
     @inline
     def saveAsKeyBasedTextFiles(basePath: String): Unit = /*self.withScope*/ {
@@ -58,7 +58,7 @@ object KeyBasedCollectionRDD {
 
   }
 
-  implicit class KeyBasedCollectionDStream[V <: AnyRef](self: DStream[(Seq[String], Iterable[V])]) extends Logging {
+  implicit class KeyBasedCollectionDStream[V <: AnyRef](self: DStream[(Seq[String], Iterable[V])]) extends Logging with Serializable {
 
     @inline
     def saveAsKeyBasedTextFiles(basePath: String): Unit = /* self.ssc.withScope */ {

@@ -32,10 +32,9 @@ import scala.reflect.ClassTag
 /** */
 object DStreamHelpers {
 
-  @transient
   private val stackedStreams: mutable.WeakHashMap[DStream[_], String] = mutable.WeakHashMap.empty
 
-  implicit class DStreamHelper[T: ClassTag](self: DStream[T]) extends Logging {
+  implicit class DStreamHelper[T: ClassTag](self: DStream[T]) extends Logging with Serializable {
 
     @inline
     def stack(size: Int): DStream[T] = /*self.ssc.withScope*/ {
